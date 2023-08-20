@@ -329,7 +329,6 @@ class MarkdownHighlighter : public QSyntaxHighlighter {
     HighlightingOptions _highlightingOptions;
     QTimer *_timer;
     QVector<QTextBlock> _dirtyTextBlocks;
-    QVector<QPair<int,int>> _linkRanges;
 
     QHash<int, QVector<InlineRange>> _ranges;
 

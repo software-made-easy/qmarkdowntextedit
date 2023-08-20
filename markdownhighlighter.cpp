@@ -145,17 +145,6 @@ void MarkdownHighlighter::initHighlightingRules() {
     //    rule.state = HighlighterState::Table;
     //    _highlightingRulesPre.append(rule);
 
-    // highlight urls
-    {
-        HighlightingRule rule(HighlighterState::Link);
-
-        // highlight reference links
-        rule.pattern =
-            QRegularExpression(QStringLiteral(R"(\[(.+?)\]\[.+?\])"));
-        rule.shouldContain = QStringLiteral("[");
-        _highlightingRules.append(rule);
-    }
-
     // highlight trailing spaces
     {
         HighlightingRule rule(HighlighterState::TrailingSpace);
@@ -1831,7 +1820,6 @@ void MarkdownHighlighter::setHeadingStyles(HighlighterState rule,
 void MarkdownHighlighter::highlightAdditionalRules(
     const QVector<HighlightingRule> &rules, const QString &text) {
     const auto &maskedFormat = _formats[HighlighterState::MaskedSyntax];
-    _linkRanges.clear();
 
     for (const HighlightingRule &rule : rules) {
         // continue if another current block state was already set if
@@ -1865,16 +1853,6 @@ void MarkdownHighlighter::highlightAdditionalRules(
                     // setHeadingStyles(format, match, maskedGroup);
 
                 } else {
-                    // store masked part of the link as a range
-                    if (rule.state == Link) {
-                        const int start = match.capturedStart(maskedGroup);
-                        const int end = match.capturedStart(maskedGroup) +
-                                        match.capturedLength(maskedGroup);
-                        if (!_linkRanges.contains({start, end})) {
-                            _linkRanges.append({start, end});
-                        }
-                    }
-
                     setFormat(match.capturedStart(maskedGroup),
                               match.capturedLength(maskedGroup),
                               currentMaskedFormat);
@@ -1920,15 +1898,6 @@ void MarkdownHighlighter::highlightInlineRules(const QString &text) {
     int i = 0;
 
     for (int i = 0; i < text.length(); ++i) {
-        // make sure we are not in a link range
-        if (!_linkRanges.isEmpty()) {
-            const int res = isInLinkRange(i, _linkRanges);
-            if (res > -1) {
-                i += res - 1;
-                continue;
-            }
-        }
-
         QChar currentChar = text.at(i);
 
         if (currentChar == QLatin1Char('`') ||
@@ -1942,7 +1911,7 @@ void MarkdownHighlighter::highlightInlineRules(const QString &text) {
             highlightEmAndStrong(text, i);
             isEmStrongDone = true;
         } else if (currentChar == QLatin1Char('[') ||
-                   currentChar == QLatin1Char('<') ||
+                   currentChar == QLatin1Char('<') ||    // <>
                    currentChar == QLatin1Char('h') ||    // http
                    currentChar == QLatin1Char('w')       // www
         ) {
@@ -1957,32 +1926,31 @@ void MarkdownHighlighter::highlightInlineRules(const QString &text) {
 
 int MarkdownHighlighter::highlightLinkOrImage(const QString &text,
                                               int startIndex) {
+    if (isHeading(currentBlockState())) return startIndex;
+
     int endIndex = text.indexOf(QLatin1Char(']'), startIndex);
 
-    if (endIndex == -1) {
-        QChar startChar = text.at(startIndex);
+    QChar startChar = text.at(startIndex);
 
-        if (startChar == QLatin1Char('<')) {    // <> links
-            endIndex = text.indexOf(QLatin1Char('>'), startIndex);
-            if (endIndex == -1) return startIndex;
-            setFormat(startIndex + 1, endIndex - startIndex - 1,
-                      _formats[Link]);
-            return endIndex;
-        } else if (startChar == QLatin1Char('h')) {    // http links
-            if (MH_SUBSTR(startIndex, 4) == QLatin1String("http")) {
-                int space = text.indexOf(QLatin1Char(' '), startIndex);
-                if (space == -1) space = text.length();
-                setFormat(startIndex, space - startIndex - 1, _formats[Link]);
-                return space;
-            }
-        } else if (startChar == QLatin1Char('w')) {    // www links
-            if (MH_SUBSTR(startIndex, 4) == QLatin1String("www.")) {
-                int space = text.indexOf(QLatin1Char(' '), startIndex);
-                if (space == -1) space = text.length();
-                setFormat(startIndex, space - startIndex - 1, _formats[Link]);
-                return space;
-            }
-        }
+    if (startChar == QLatin1Char('<')) {    // <> links
+        endIndex = text.indexOf(QLatin1Char('>'), startIndex);
+        if (endIndex == -1) return startIndex;
+        setFormat(startIndex + 1, endIndex - startIndex - 1, _formats[Link]);
+        return endIndex;
+    } else if (startChar == QLatin1Char('h')) {    // http links
+        if (MH_SUBSTR(startIndex, 4) != QLatin1String("http"))
+            return startIndex;
+        int space = text.indexOf(QLatin1Char(' '), startIndex);
+        if (space == -1) space = text.length();
+        setFormat(startIndex, space - startIndex, _formats[Link]);
+        return space;
+    } else if (startChar == QLatin1Char('w')) {    // www links
+        if (MH_SUBSTR(startIndex, 4) != QLatin1String("www."))
+            return startIndex;
+        int space = text.indexOf(QLatin1Char(' '), startIndex);
+        if (space == -1) space = text.length();
+        setFormat(startIndex, space - startIndex - 1, _formats[Link]);
+        return space;
     }
 
     if (endIndex == -1 || endIndex == text.size() - 1) return startIndex;
@@ -1990,7 +1958,9 @@ int MarkdownHighlighter::highlightLinkOrImage(const QString &text,
     // Check if it's a link or image
     if ((startIndex - 1 >= 0) && text.at(startIndex - 1) == QLatin1Char('!')) {
         setFormat(startIndex + 1, endIndex - startIndex - 1, _formats[Image]);
-        return text.indexOf(QLatin1Char(')'), endIndex) + 1;
+
+        int closingIndex = text.indexOf(QLatin1Char(')'), endIndex);
+        return closingIndex == -1 ? endIndex : closingIndex + 1;
     } else if (text.at(endIndex + 1) == QLatin1Char('(')) {
         int closingParenIndex = text.indexOf(QLatin1Char(')'), endIndex);
         if (closingParenIndex == -1) return startIndex;
@@ -1998,9 +1968,7 @@ int MarkdownHighlighter::highlightLinkOrImage(const QString &text,
         // Link with image
         if (MH_SUBSTR(startIndex, 3) == QLatin1String("[![")) startIndex += 2;
 
-        if (!isHeading(currentBlockState()))
-            setFormat(startIndex + 1, endIndex - startIndex - 1,
-                      _formats[Link]);
+        setFormat(startIndex + 1, endIndex - startIndex - 1, _formats[Link]);
         return closingParenIndex + 1;
     }
 
