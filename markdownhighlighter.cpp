@@ -117,15 +117,6 @@ void MarkdownHighlighter::addDirtyBlock(const QTextBlock &block) {
  * /usr/share/kde4/apps/katepart/syntax/markdown.xml
  */
 void MarkdownHighlighter::initHighlightingRules() {
-    // highlight the reference of reference links
-    {
-        HighlightingRule rule(HighlighterState::MaskedSyntax);
-        rule.pattern =
-            QRegularExpression(QStringLiteral(R"(^\[.+?\]: \w+://.+$)"));
-        rule.shouldContain = QStringLiteral("://");
-        _highlightingRules.append(rule);
-    }
-
     // highlight block quotes
     {
         HighlightingRule rule(HighlighterState::BlockQuote);
@@ -1895,7 +1886,6 @@ int isInLinkRange(int pos, QVector<QPair<int, int>> &range) {
  */
 void MarkdownHighlighter::highlightInlineRules(const QString &text) {
     bool isEmStrongDone = false;
-    int i = 0;
 
     for (int i = 0; i < text.length(); ++i) {
         QChar currentChar = text.at(i);
@@ -1921,59 +1911,100 @@ void MarkdownHighlighter::highlightInlineRules(const QString &text) {
 }
 
 /**
- * @brief highlight images and links
+ * @brief This function highlights images and links in Markdown text.
+ *
+ * @param text The input Markdown text.
+ * @param startIndex The starting index from where to begin processing.
+ * @return The index where processing should continue.
  */
-
 int MarkdownHighlighter::highlightLinkOrImage(const QString &text,
                                               int startIndex) {
+    // If the current blockis a heading, don't process further
     if (isHeading(currentBlockState())) return startIndex;
 
-    int endIndex = text.indexOf(QLatin1Char(']'), startIndex);
-
+    // Get the character at the starting index
     QChar startChar = text.at(startIndex);
 
-    if (startChar == QLatin1Char('<')) {    // <> links
-        endIndex = text.indexOf(QLatin1Char('>'), startIndex);
-        if (endIndex == -1) return startIndex;
-        setFormat(startIndex + 1, endIndex - startIndex - 1, _formats[Link]);
-        return endIndex;
-    } else if (startChar == QLatin1Char('h')) {    // http links
+    // If it starts with '<', it indicates a link enclosed in angle brackets
+    if (startChar == QLatin1Char('<')) {
+        // Find the closing '>' character to identify the end of the link
+        int closingChar = text.indexOf(QLatin1Char('>'), startIndex);
+        if (closingChar == -1) return startIndex;
+        // Apply formatting to highlight the link
+        setFormat(startIndex + 1, closingChar - startIndex - 1, _formats[Link]);
+        return closingChar;
+    }
+    // If the starting character is 'h', it might indicate an http link
+    else if (startChar == QLatin1Char('h')) {
+        // Check if the substring starting from the current index matches
+        // "http".
         if (MH_SUBSTR(startIndex, 4) != QLatin1String("http"))
             return startIndex;
+        // Find the index of the space character to determine the end of the
+        // link.
         int space = text.indexOf(QLatin1Char(' '), startIndex);
         if (space == -1) space = text.length();
+        // Apply formatting to highlight the http link.
         setFormat(startIndex, space - startIndex, _formats[Link]);
         return space;
-    } else if (startChar == QLatin1Char('w')) {    // www links
+    }
+    // If the starting character is 'w', it might indicate a www link.
+    else if (startChar == QLatin1Char('w')) {
+        // Check if the substring starting from the current index matches
+        // "www.".
         if (MH_SUBSTR(startIndex, 4) != QLatin1String("www."))
             return startIndex;
+        // Find the index of the space character to determine the end of the
+        // link.
         int space = text.indexOf(QLatin1Char(' '), startIndex);
         if (space == -1) space = text.length();
+        // Apply formatting to highlight the www link.
         setFormat(startIndex, space - startIndex - 1, _formats[Link]);
         return space;
     }
 
+    // Find the index of the closing ']' character to identify the end of link
+    // or image text.
+    int endIndex = text.indexOf(QLatin1Char(']'), startIndex);
+
+    // If endIndex is not found or at the end of the text, no further processing
+    // is needed.
     if (endIndex == -1 || endIndex == text.size() - 1) return startIndex;
 
-    // Check if it's a link or image
+    // If there is an exclamation mark preceding the starting character, it's an
+    // image.
     if ((startIndex - 1 >= 0) && text.at(startIndex - 1) == QLatin1Char('!')) {
+        // Apply formatting to highlight the image.
         setFormat(startIndex + 1, endIndex - startIndex - 1, _formats[Image]);
-
+        // Find the index of the closing ')' character after the image link.
         int closingIndex = text.indexOf(QLatin1Char(')'), endIndex);
         return closingIndex == -1 ? endIndex : closingIndex + 1;
-    } else if (text.at(endIndex + 1) == QLatin1Char('(')) {
+    }
+    // If the character after the closing ']' is '(', it's a regular link.
+    else if (text.at(endIndex + 1) == QLatin1Char('(')) {
+        // Find the index of the closing ')' character after the link.
         int closingParenIndex = text.indexOf(QLatin1Char(')'), endIndex);
         if (closingParenIndex == -1) return startIndex;
 
-        // Link with image
+        // If the substring starting from the current index matches "[![",
+        // adjust the start index.
         if (MH_SUBSTR(startIndex, 3) == QLatin1String("[![")) startIndex += 2;
 
+        // Apply formatting to highlight the link.
         setFormat(startIndex + 1, endIndex - startIndex - 1, _formats[Link]);
         return closingParenIndex + 1;
     }
+    // Reference links
+    else if (text.at(endIndex + 1) == QLatin1Char('[')) {
+        int closingChar = text.indexOf(QLatin1Char(']'), endIndex);
+        if (closingChar == -1) return startIndex;
 
-    // Return the original start index if no link or image is found
-    return startIndex;
+        setFormat(startIndex + 1, endIndex - startIndex - 1, _formats[Link]);
+        return closingChar;
+    }
+
+    return startIndex;    // If none of the conditions are met, continue
+                          // processing from the same index.
 }
 
 /** @brief highlight inline code spans -> `code` and highlight
