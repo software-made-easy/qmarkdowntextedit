@@ -1976,21 +1976,21 @@ int MarkdownHighlighter::highlightLinkOrImage(const QString &text,
     if ((startIndex - 1 >= 0) && text.at(startIndex - 1) == QLatin1Char('!')) {
         // Apply formatting to highlight the image.
         setFormat(startIndex + 1, endIndex - startIndex - 1, _formats[Image]);
-        // Find the index of the closing ')' character after the image link.
+        // Find the index of the closing ')' character after the image link
         int closingIndex = text.indexOf(QLatin1Char(')'), endIndex);
         return closingIndex == -1 ? endIndex : closingIndex + 1;
     }
-    // If the character after the closing ']' is '(', it's a regular link.
+    // If the character after the closing ']' is '(', it's a regular link
     else if (text.at(endIndex + 1) == QLatin1Char('(')) {
-        // Find the index of the closing ')' character after the link.
+        // Find the index of the closing ')' character after the link
         int closingParenIndex = text.indexOf(QLatin1Char(')'), endIndex);
         if (closingParenIndex == -1) return startIndex;
 
         // If the substring starting from the current index matches "[![",
-        // adjust the start index.
+        // It*s a link with image
         if (MH_SUBSTR(startIndex, 3) == QLatin1String("[![")) startIndex += 2;
 
-        // Apply formatting to highlight the link.
+        // Apply formatting to highlight the link
         setFormat(startIndex + 1, endIndex - startIndex - 1, _formats[Link]);
         return closingParenIndex + 1;
     }
@@ -2004,7 +2004,7 @@ int MarkdownHighlighter::highlightLinkOrImage(const QString &text,
     }
 
     return startIndex;    // If none of the conditions are met, continue
-                          // processing from the same index.
+                          // processing from the same index
 }
 
 /** @brief highlight inline code spans -> `code` and highlight
