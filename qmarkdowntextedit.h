@@ -102,9 +102,9 @@ class QMarkdownTextEdit : public QPlainTextEdit {
     bool eventFilter(QObject *obj, QEvent *event) override;
     QMargins viewportMargins();
     bool increaseSelectedTextIndention(
-        bool reverse, const QString &indentCharacters = QChar('\t'));
+        bool reverse, const QString &indentCharacters = QChar(u'\t'));
     bool handleTabEntered(bool reverse,
-                          const QString &indentCharacters = QChar('\t'));
+                          const QString &indentCharacters = QChar(u'\t'));
     QMap<QString, QString> parseMarkdownUrlsFromText(const QString &text);
     bool handleReturnEntered();
     bool handleBracketClosing(const QChar openingCharacter,
