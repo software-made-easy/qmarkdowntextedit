@@ -1910,6 +1910,13 @@ void MarkdownHighlighter::highlightInlineRules(const QString &text) {
     }
 }
 
+// Helper function for MarkdownHighlighter::highlightLinkOrImage
+bool isLink(const QString &text) {
+    return text.startsWith(QLatin1String("http://")) ||
+           text.startsWith(QLatin1String("https://")) ||
+           text.startsWith(QLatin1String("www."));
+}
+
 /**
  * @brief This function highlights images and links in Markdown text.
  *
@@ -1925,41 +1932,43 @@ int MarkdownHighlighter::highlightLinkOrImage(const QString &text,
     // Get the character at the starting index
     QChar startChar = text.at(startIndex);
 
-    // If it starts with '<', it indicates a link enclosed in angle brackets
+    // If it starts with '<', it indicates a link, or an email enclosed in angle
+    // brackets
     if (startChar == QLatin1Char('<')) {
         // Find the closing '>' character to identify the end of the link
         int closingChar = text.indexOf(QLatin1Char('>'), startIndex);
         if (closingChar == -1) return startIndex;
+
+        // Extract the content between '<' and '>'
+        QString linkContent =
+            text.mid(startIndex + 1, closingChar - startIndex - 1);
+
+        // Check if it's a valid link or email
+        if (!isLink(linkContent) && !linkContent.contains(QLatin1Char('@')))
+            return startIndex;
+
         // Apply formatting to highlight the link
         setFormat(startIndex + 1, closingChar - startIndex - 1, _formats[Link]);
+
         return closingChar;
     }
-    // If the starting character is 'h', it might indicate an http link
-    else if (startChar == QLatin1Char('h')) {
-        // Check if the substring starting from the current index matches
-        // "http".
-        if (MH_SUBSTR(startIndex, 4) != QLatin1String("http"))
-            return startIndex;
-        // Find the index of the space character to determine the end of the
-        // link.
+    // Highlight http and www links
+    else if (startChar == QLatin1Char('h') || startChar == QLatin1Char('w')) {
         int space = text.indexOf(QLatin1Char(' '), startIndex);
         if (space == -1) space = text.length();
-        // Apply formatting to highlight the http link.
-        setFormat(startIndex, space - startIndex, _formats[Link]);
-        return space;
-    }
-    // If the starting character is 'w', it might indicate a www link.
-    else if (startChar == QLatin1Char('w')) {
-        // Check if the substring starting from the current index matches
-        // "www.".
-        if (MH_SUBSTR(startIndex, 4) != QLatin1String("www."))
-            return startIndex;
-        // Find the index of the space character to determine the end of the
-        // link.
-        int space = text.indexOf(QLatin1Char(' '), startIndex);
-        if (space == -1) space = text.length();
-        // Apply formatting to highlight the www link.
-        setFormat(startIndex, space - startIndex - 1, _formats[Link]);
+
+        if (MH_SUBSTR(startIndex, 6) == QLatin1String("href=\"")) {
+            int hrefEnd = text.indexOf(QLatin1Char('"'), startIndex + 6);
+            if (hrefEnd == -1) return space;
+
+            setFormat(startIndex + 6, hrefEnd - startIndex - 6, _formats[Link]);
+            return hrefEnd;
+        }
+
+        QString link = text.mid(startIndex, space - startIndex - 1);
+        if (!isLink(link)) return startIndex;
+
+        setFormat(startIndex, link.length() + 1, _formats[Link]);
         return space;
     }
 
